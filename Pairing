@@ -1,0 +1,42 @@
+dir$ = "/Users/eloiseschell/Desktop/Research/Code and Outputs/Stim/R2P/"
+
+# Read TSV file 
+list = Read Strings from raw text file: "/Users/eloiseschell/Desktop/Research/Code and Outputs/Stim/R2P/StimPairs2.tsv"
+
+# Get number of strings in the file
+numberOfLines = Get number of strings
+
+for lineNumber from 2 to numberOfLines
+	line$ = Get string: lineNumber
+	## strings = Extract part: line$
+	## string1$ = Get string: 1
+	## string2$ = Get string: 2
+	string1$ = left$ (line$, 12)
+	string2$ = right$ (line$, 16)
+		
+	## subtracting .wav
+	string2$ = left$(string2$, 12)
+	
+	# **SELECT and CONFIRM SAME NAMES** PNM055
+	selectObject: string1
+	filename1$ = string1
+	
+	# **SELECT and CONFIRM SAME NAMES*** PNM079 
+	plusObject: string2
+	filename2$ = string2
+
+	## Scale intensity to 70.0 dB SPL
+	Scale intensity: 70
+	
+	## Combine 
+
+	Combine to stereo
+
+	## Convert to mono 
+	
+	Convert to mono
+
+	Save as WAV file: dir$ + filename1$ + " + " + filename2$ + ".wav"
+endfor
+
+
