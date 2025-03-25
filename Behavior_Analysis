@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Mar  3 23:00:16 2025
+
+@author: eloiseschell
+"""
+
+import pandas as pd
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Column names defined as required by addition of NaN block replacements
+columns = ['Trial', 'Response', 'Correct', 'Latency (ms)', 'Stim/Resp']
+
+# Function to process each block for a participant
+def concat_blocks(block_num, block_path):
+    # Read the raw data from the HTML file (index 7 is the dataframe index within the larger HTML file)
+    raw_df = pd.read_html(block_path)[7]
+    
+    # Include only rows where 'Type' equals 4
+    filtered_df = raw_df[raw_df['Type'] == 4]
+    
+    # Return the filtered df for this block
+    return filtered_df
+
+# Folder path where all participant data resides
+folder_path = "/Users/eloiseschell/Desktop/Research/Code and Outputs/Behavioral Data/"
+
+# List of participants to process, must be in Behavioral Data folder
+participants = ['RASP_02', 'RASP_04', 'RASP_09', 'RASP_23', 
+                'RASP_26', 'RASP_28', 'RASP_29', 'RASP_31']  # Add more participant IDs as needed
+
+# Empty DataFrame to hold all participant data
+final_master_df = pd.DataFrame()
+
+# Iterate through each participant
+for participant in participants:
+    print(f"Processing data for {participant}...")
+    
+    # Initialize an empty list to hold DataFrames for each block
+    all_blocks_df = []
+
+    # Going through each block (1 to 8)
+    for block_num in range(1, 9):
+        block_path = os.path.join(folder_path, f"{participant}/Block{block_num}.html")
+
+        if os.path.exists(block_path):  # If file exists
+            print(f"Processing Block {block_num} for {participant}")
+            block_df = concat_blocks(block_num, block_path)
+
+            # Append the DataFrame for this block to the list
+            all_blocks_df.append(block_df)
+        else:
+            print(f"Block {block_num} is missing for {participant}. Adding NaN rows.")
+
+            # Set the number of rows to be skipped/replaced with NaN based on block_num
+            if block_num in [1, 2, 3, 4]:  # Set num_rows for blocks 1, 2, 3, or 4
+                num_rows = 38
+            else:
+                num_rows = 37  # Default for other blocks
+
+            # Create a DataFrame with NaN values for the missing block and make column names same so they can concatenate
+            nan_df = pd.DataFrame(np.nan, index=range(num_rows), columns=columns)
+
+            # Append NaN DataFrame to the list
+            all_blocks_df.append(nan_df)
+
+    # Concatenate all DataFrames for this participant's blocks into one DataFrame
+    final_df = pd.concat(all_blocks_df, axis=0, ignore_index=True)
+
+    # Read the master CSV file (WavFilesbyBlock.csv)
+    df = pd.read_csv('WavFilesbyBlock_updated.csv')
+
+    # Create a list of columns from 'Unnamed: 8' to 'Unnamed: 25' and drop them
+    columns_to_drop = [f'Unnamed: {i}' for i in range(8, 26)]  # Creates ['Unnamed: 8', 'Unnamed: 9', ..., 'Unnamed: 25']
+    master_df = df.drop(columns=columns_to_drop)
+
+    # Add the 'Correct' column from final_df to the master_df, using participant ID as the column name
+    master_df[participant] = final_df['Correct']
+
+    # If final_master_df is empty, set it to the first participant's master_df
+    if final_master_df.empty:
+        final_master_df = master_df
+    else:
+        # Concatenate new participant data as a new column to avoid overwriting any previous participant data
+        final_master_df = pd.concat([final_master_df, master_df[participant]], axis=1)
+
+
+# Optionally, save the final DataFrame to a CSV file
+final_master_df.to_csv("final_participants_data.csv", index=False)
+
+
+# Data frame to save correct and incorrect total counts to condition and fix dataframe format 
+# select only the columns with participant responses (e.g., 'rasp_02', 'rasp_04', etc.)
+participant_columns = ['RASP_02', 'RASP_04', 'RASP_09', 'RASP_23', 'RASP_26', 'RASP_28', 'RASP_29', 'RASP_31']
+
+# group by 'condition' and then calculate the count of 1s (correct) and 0s (incorrect) for each participant
+response_counts = final_master_df.groupby('Condition')[participant_columns].apply(lambda x: x.apply(pd.Series.value_counts, axis=0))
+
+# reset the index to undo double indexing in response_counts table 
+response_counts_reset = response_counts.reset_index()
+
+# combine 'Condition' and 'Correctness' into a single column - adds this column at the end, so need to process further
+response_counts_reset['Condition_Correctness'] = response_counts_reset['Condition'] + '_' + response_counts_reset['level_1'].astype(str)
+
+# Drop the separate 'Condition' and 'level_1' columns
+response_counts_reset = response_counts_reset.drop(['Condition', 'level_1'], axis=1)
+
+# Set the combined 'Condition_Correctness' as the new index 
+# response_counts_reset = response_counts_reset.set_index('Condition_Correctness')
+
+# Reorder columns to make 'Condition_Correctness' the first column (and not the index)
+response_counts_reset = response_counts_reset[['Condition_Correctness'] + [col for col in response_counts_reset.columns if col != 'Condition_Correctness']]
+
+
+
+
+# Because not all conditions have same number of trials, proportion correct in regards to condition, not whole 
+# Step 1: Split the data based on correctness (1.0 = correct, 0.0 = incorrect)
+correct_data = response_counts_reset[response_counts_reset['Condition_Correctness'].str.endswith('1.0')]
+incorrect_data = response_counts_reset[response_counts_reset['Condition_Correctness'].str.endswith('0.0')]
+
+# Step 2: Remove 'Condition_Correctness' column
+correct_data = correct_data.drop(columns='Condition_Correctness')
+incorrect_data = incorrect_data.drop(columns='Condition_Correctness')
+
+# Step 3: Sum correct and incorrect responses for each condition and participant
+correct_sum_per_condition = correct_data.groupby(response_counts_reset['Condition_Correctness'].str.split('_', expand=True)[0]).sum()
+incorrect_sum_per_condition = incorrect_data.groupby(response_counts_reset['Condition_Correctness'].str.split('_', expand=True)[0]).sum()
+
+# Step 4: Combine correct and incorrect sums to get the total number of responses for each condition
+total_responses_per_condition = correct_sum_per_condition + incorrect_sum_per_condition
+
+# Step 5: Calculate the proportion of correct responses
+proportion_correct_per_condition = correct_sum_per_condition / total_responses_per_condition
+
+
+
+# Generating bar plot 
+# Step 1: Calculate the average proportion of correct responses per condition
+avg_proportion_correct_condition = proportion_correct_per_condition.mean(axis=1)
+
+# Step 2: Plot the average proportion of correct responses per condition
+# Here we use seaborn to make the bar plot more visually appealing
+plt.figure(figsize=(10, 6))  # Set the figure size
+
+# Plot the bar plot
+sns.barplot(x=avg_proportion_correct_condition.index, y=avg_proportion_correct_condition.values)
+
+# Set plot labels and title
+plt.xlabel('Condition', fontsize=12)
+plt.ylabel('Average Proportion Correct', fontsize=12)
+plt.title('Average Proportion of Correct Responses per Condition', fontsize=14)
+
+# Display the plot
+plt.show()
