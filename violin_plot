@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Aug  5 21:18:59 2025
+
+@author: eloiseschell
+"""
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import seaborn as sns
+
+# Load and clean data
+csvFile = pd.read_excel('/Users/eloiseschell/Desktop/Research/Code and Outputs/Behavioral Analysis/Results/BehaviorData1.xlsx')
+csvFile.columns = csvFile.columns.str.strip()
+
+
+# Conditions and labels
+conditions = ['TA', 'BS', 'BA']
+labels = ['Target Altered', 'Neither Altered', 'Background Altered']
+condition_map = dict(zip(conditions, labels))
+
+# Convert for seaborn
+df_long = pd.melt(csvFile[conditions], var_name='Condition', value_name='Proportion Correct')
+df_long['Label'] = df_long['Condition'].map(condition_map)
+df_long['Subject'] = np.tile(np.arange(len(csvFile)), len(conditions))  # Add subject ID
+
+# Colors
+palette = {'Target Altered': '#69a1eb', 'Neither Altered': '#eb7269',
+           'Background Altered' : '#cf5b61'}
+
+# Plot
+plt.figure(figsize=(8, 6))
+sns.violinplot(
+    data=df_long,
+    x='Label',
+    y='Proportion Correct',
+    palette=palette,
+    inner=None, # Change to "box" for box and whisker plot
+    linewidth=1.0,
+    width=0.5  
+)
+
+# Overlay individual dots and connect them by subject
+for subject in df_long['Subject'].unique():
+    subj_data = df_long[df_long['Subject'] == subject]
+    x_base = [labels.index(label) for label in subj_data['Label']]
+    y_vals = subj_data['Proportion Correct'].values
+
+    # Apply the same jitter to all x-points for this subject
+    x_jittered = [x + np.random.normal(0, 0.03) for x in x_base]
+
+    # Draw the connecting line using the jittered x-values
+    plt.plot(x_jittered, y_vals, color='black', alpha=0.4, linewidth=1)
+
+    # Plot filled black dots using the same jittered x-values
+    for x, y in zip(x_jittered, y_vals):
+        plt.scatter(x, y, color='black', s=35, alpha=0.9)
+ 
+
+# Formatting
+plt.axhline(y=1, linestyle='--')
+plt.axhline(y=0, linestyle='--')
+plt.xticks(ticks=range(len(labels)), labels=labels, fontsize=16)
+plt.yticks(fontsize=16)
+plt.xlabel('Condition', fontsize=18)
+plt.ylabel('Proportion Correct', fontsize=18)
+plt.title('Correct Responses by Condition (n=14)', fontsize=22)
+plt.ylim([-0.3, 1.3])
+plt.tight_layout()
+plt.show()
+
